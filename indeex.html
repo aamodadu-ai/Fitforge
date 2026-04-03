@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>FitForge AI</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    :root { --bg: #060810; --surface: #0c0e1a; --card: #101220; --border: #1c1f35; --accent: #4285f4; --text: #e2e4f0; --muted: #4a4f70; --syne: 'Syne', sans-serif; --mono: 'JetBrains Mono', monospace; }
+    * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+    body { background:var(--bg); color:var(--text); font-family:var(--syne); min-height:100vh; padding: 20px 16px; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:20px; margin-bottom:20px; }
+    .field { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
+    .field label { font-family:var(--mono); font-size:9px; color:var(--muted); text-transform:uppercase; }
+    input, select { background:var(--surface); border:1px solid var(--border); border-radius:10px; color:var(--text); padding:12px; font-size:15px; outline:none; width:100%; }
+    .btn { width:100%; background:var(--accent); color:#fff; border:none; border-radius:12px; padding:16px; font-weight:700; cursor:pointer; margin-top:10px; }
+    .hidden { display:none; }
+    .loading { text-align:center; padding:40px; }
+    .tabs { display:flex; gap:8px; overflow-x:auto; margin-bottom:20px; }
+    .tab-btn { background:var(--surface); border:1px solid var(--border); color:var(--muted); padding:10px 15px; border-radius:8px; font-size:11px; font-family:var(--mono); white-space:nowrap; }
+    .tab-btn.active { background:var(--accent); color:white; }
+    #key-modal { position:fixed; inset:0; background:rgba(0,0,0,0.9); z-index:999; display:flex; align-items:center; justify-content:center; padding:20px; }
+  </style>
+</head>
+<body>
+
+<div id="key-modal" class="hidden">
+    <div class="card" style="width:100%; max-width:400px;">
+        <h2 style="margin-bottom:10px">Setup Security</h2>
+        <p style="font-size:13px; color:var(--muted); margin-bottom:20px;">To keep your app private, paste your Gemini API key here. It will be saved only on this device.</p>
+        <div class="field">
+            <label>Gemini API Key</label>
+            <input type="password" id="userApiKey" placeholder="AIzaSy...">
+        </div>
+        <button class="btn" onclick="saveKey()">Save to Device</button>
+        <p style="font-size:10px; margin-top:10px; text-align:center"><a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--accent)">Get a free key here</a></p>
+    </div>
+</div>
+
+<div id="main-ui">
+    <h1 style="text-align:center; margin-bottom:20px;">Fit<em>Forge</em> AI</h1>
+    
+    <div class="card" id="formCard">
+        <div class="field"><label>Weight (kg)</label><input type="number" id="weight" placeholder="70"></div>
+        <div class="field"><label>Height (cm)</label><input type="number" id="height" placeholder="175"></div>
+        <div class="field">
+            <label>Goal</label>
+            <select id="goal">
+                <option value="muscle_gain">Muscle Gain</option>
+                <option value="fat_loss">Fat Loss</option>
+            </select>
+        </div>
+        <button class="btn" onclick="generate()">GENERATE PLAN</button>
+        <button onclick="clearKey()" style="background:none; border:none; color:var(--muted); font-size:10px; margin-top:15px; width:100%">Update API Key</button>
+    </div>
+
+    <div id="loading" class="loading hidden">
+        <p>Forging your plan...</p>
+    </div>
+
+    <div id="results" class="hidden">
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('workout', this)">WORKOUT</button>
+            <button class="tab-btn" onclick="switchTab('diet', this)">DIET</button>
+        </div>
+        <div id="tab-workout"></div>
+        <div id="tab-diet" class="hidden"></div>
+        <button class="btn" style="background:var(--surface)" onclick="location.reload()">START OVER</button>
+    </div>
+</div>
+
+<script>
+// CHECK FOR SAVED KEY ON LOAD
+window.onload = function() {
+    if (!localStorage.getItem('gemini_key')) {
+        document.getElementById('key-modal').classList.remove('hidden');
+    }
+};
+
+function saveKey() {
+    const key = document.getElementById('userApiKey').value.trim();
+    if (key) {
+        localStorage.setItem('gemini_key', key);
+        document.getElementById('key-modal').classList.add('hidden');
+    }
+}
+
+function clearKey() {
+    localStorage.removeItem('gemini_key');
+    location.reload();
+}
+
+async function generate() {
+    const key = localStorage.getItem('gemini_key');
+    const w = document.getElementById('weight').value;
+    const h = document.getElementById('height').value;
+    const g = document.getElementById('goal').value;
+
+    if(!w || !h) return alert("Fill all fields");
+
+    document.getElementById('formCard').classList.add('hidden');
+    document.getElementById('loading').classList.remove('hidden');
+
+    try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ contents: [{ parts: [{ text: `Create a workout and diet plan for ${w}kg, ${h}cm, goal: ${g}. Use ## Workout Plan and ## Diet Plan headings.` }] }] })
+        });
+        const data = await res.json();
+        const text = data.candidates[0].content.parts[0].text;
+        
+        const sections = text.split('##');
+        document.getElementById('tab-workout').innerHTML = `<div class="card">${sections.find(s => s.includes('Workout')).replace(/\n/g, '<br>')}</div>`;
+        document.getElementById('tab-diet').innerHTML = `<div class="card">${sections.find(s => s.includes('Diet')).replace(/\n/g, '<br>')}</div>`;
+        
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('results').classList.remove('hidden');
+    } catch (e) {
+        alert("Error. Key might be wrong.");
+        clearKey();
+    }
+}
+
+function switchTab(tab, btn) {
+    document.getElementById('tab-workout').classList.toggle('hidden', tab !== 'workout');
+    document.getElementById('tab-diet').classList.toggle('hidden', tab !== 'diet');
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+}
+</script>
+</body>
+</html>
