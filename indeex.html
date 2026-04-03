@@ -1,1 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>FitForge AI</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    :root { --bg: #060810; --surface: #0c0e1a; --card: #101220; --border: #1c1f35; --accent: #4285f4; --text: #e2e4f0; --muted: #4a4f70; --syne: 'Syne', sans-serif; --mono: 'JetBrains Mono', monospace; }
+    * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+    body { background:var(--bg); color:var(--text); font-family:var(--syne); min-height:100vh; padding: 20px 16px; overflow-x: hidden; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:20px; margin-bottom:20px; position: relative; z-index: 1; }
+    .field { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
+    .field label { font-family:var(--mono); font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing: 1px; }
+    input, select { background:var(--surface); border:1px solid var(--border); border-radius:10px; color:var(--text); padding:12px; font-size:16px; outline:none; width:100%; font-family: inherit; }
+    input:focus { border-color: var(--accent); }
+    .btn { width:100%; background:var(--accent); color:#fff; border:none; border-radius:12px; padding:16px; font-weight:700; cursor:pointer; font-family: var(--syne); font-size: 16px; transition: 0.2s; }
+    .btn:active { transform: scale(0.98); opacity: 0.9; }
+    .hidden { display:none !important; }
+    .tabs { display:flex; gap:8px; overflow-x:auto; margin-bottom:20px; padding-bottom: 5px; }
+    .tab-btn { background:var(--surface); border:1px solid var(--border); color:var(--muted); padding:10px 15px; border-radius:8px; font-size:11px; font-family:var(--mono); white-space:nowrap; cursor: pointer; }
+    .tab-btn.active { background:var(--accent); color:white; border-color: var(--accent); }
+    #key-modal { position:fixed; inset:0; background:var(--bg); z-index:999; display:flex; align-items:center; justify-content:center; padding:20px; }
+    .plan-body { font-size: 14px; line-height: 1.6; color: var(--text); }
+    .plan-body strong { color: #ffd166; }
+    h1 { font-size: 32px; text-align: center; margin-bottom: 20px; font-weight: 800; }
+    h1 em { color: var(--accent); font-style: normal; }
+  </style>
+</head>
+<body>
 
+<div id="key-modal" class="hidden">
+    <div class="card" style="width:100%; max-width:400px;">
+        <h2 style="margin-bottom:10px">Security Setup</h2>
+        <p style="font-size:13px; color:var(--muted); margin-bottom:20px;">Paste your <strong>Gemini API Key</strong> to activate the app. This is stored only on your phone.</p>
+        <div class="field">
+            <label>API Key</label>
+            <input type="password" id="userApiKey" placeholder="AIzaSy...">
+        </div>
+        <button class="btn" onclick="saveKey()">Activate App</button>
+        <p style="font-size:11px; margin-top:15px; text-align:center">
+            <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--accent); text-decoration:none;">Get Free Key →</a>
+        </p>
+    </div>
+</div>
+
+<div id="main-content">
+    <h1>Fit<em>Forge</em></h1>
+    
+    <div id="formCard" class="card">
+        <div class="field"><label>Weight (kg)</label><input type="number" id="weight" placeholder="e.g. 75"></div>
+        <div class="field"><label>Height (cm)</label><input type="number" id="height" placeholder="e.g. 180"></div>
+        <div class="field">
+            <label>Fitness Goal</label>
+            <select id="goal">
+                <option value="Muscle Gain">Muscle Gain</option>
+                <option value="Fat Loss">Fat Loss / Cutting</option>
+                <option value="Strength">Strength & Power</option>
+            </select>
+        </div>
+        <button class="btn" onclick="generate()">GENERATE PLAN</button>
+        <button onclick="clearKey()" style="background:none; border:none; color:var(--muted); font-size:10px; margin-top:20px; width:100%; cursor:pointer;">Reset API Key</button>
+    </div>
+
+    <div id="loading" class="hidden" style="text-align:center; padding:50px 20px;">
+        <div style="width:40px; height:40px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 1s infinite linear; margin:0 auto 20px;"></div>
+        <p style="font-family:var(--mono); color:var(--accent); font-size:12px;">Forging AI Plan...</p>
+    </div>
+
+    <div id="results" class="hidden">
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('workout', this)">WORKOUT</button>
+            <button class="tab-btn" onclick="switchTab('diet', this)">DIET PLAN</button>
+        </div>
+        <div id="tab-workout" class="plan-body"></div>
+        <div id="tab-diet" class="plan-body hidden"></div>
+        <button class="btn" style="background:var(--surface); margin-top:20px;" onclick="location.reload()">NEW PLAN</button>
+    </div>
+</div>
+
+<style> @keyframes spin { to { transform: rotate(360deg); } } </style>
+
+<script>
+// Check key on startup
+window.onload = function() {
+    if (!localStorage.getItem('gemini_key')) {
+        document.getElementById('key-modal').classList.remove('hidden');
+    }
+};
+
+function saveKey() {
+    const key = document.getElementById('userApiKey').value.trim();
+    if (key) {
+        localStorage.setItem('gemini_key', key);
+        document.getElementById('key-modal').classList.add('hidden');
+    } else {
+        alert("Please enter a valid key.");
+    }
+}
+
+function clearKey() {
+    localStorage.removeItem('gemini_key');
+    location.reload();
+}
+
+async function generate() {
+    const key = localStorage.getItem('gemini_key');
+    const weight = document.getElementById('weight').value;
+    const height = document.getElementById('height').value;
+    const goal = document.getElementById('goal').value;
+
+    if(!weight || !height) return alert("Please enter weight and height.");
+
+    document.getElementById('formCard').classList.add('hidden');
+    document.getElementById('loading').classList.remove('hidden');
+
+    const prompt = `Create a detailed fitness and diet plan for a person: Weight ${weight}kg, Height ${height}cm, Goal ${goal}. 
+    Format with ## Workout and ## Diet headings. Use bold for exercises and meals.`;
+
+    try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+        });
+
+        const data = await response.json();
+        
+        if (data.error) throw new Error(data.error.message);
+
+        const text = data.candidates[0].content.parts[0].text;
+        const sections = text.split('##');
+
+        const workoutContent = sections.find(s => s.toLowerCase().includes('workout')) || "Workout generated. Tap Diet.";
+        const dietContent = sections.find(s => s.toLowerCase().includes('diet')) || "Diet generated. Tap Workout.";
+
+        document.getElementById('tab-workout').innerHTML = `<div class="card">${workoutContent.replace(/\n/g, '<br>')}</div>`;
+        document.getElementById('tab-diet').innerHTML = `<div class="card">${dietContent.replace(/\n/g, '<br>')}</div>`;
+
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('results').classList.remove('hidden');
+
+    } catch (e) {
+        alert("Error: " + e.message + ". Key might be incorrect.");
+        clearKey();
+    }
+}
+
+function switchTab(tab, btn) {
+    document.getElementById('tab-workout').classList.toggle('hidden', tab !== 'workout');
+    document.getElementById('tab-diet').classList.toggle('hidden', tab !== 'diet');
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+}
+</script>
+
+</body>
+</html>
